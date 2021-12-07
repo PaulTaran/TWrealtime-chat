@@ -1,17 +1,114 @@
 
+
+$(".fa-times").hide();
+$(".fa-check").hide();
+
+function get_username(){
+    var usr = "";
+    $.ajax({
+        url: "/getusername",
+        type: "POST",
+        'async':false,
+        dataType: 'text',
+        success: function (res){
+            usr = res;
+            
+        }
+    });
+    return usr;
+    
+}
+$(".myusername-container").append(`<div class="username">@${get_username()}</div>`);
+
+function populate_friends(){
+    $.ajax({
+        url: "/populate_friends",
+        type: "POST",
+        dataType: 'text',
+        data: {user:get_username()},
+        success: function (res){
+            res = JSON.parse(res);
+            for (var i = 0; i < res.length; i++){
+                var friend = `<li class="lom"><span class="name">@${res[i]}</span><div class="fas fa-envelope"></div><div class="status"><div class="fas fa-circle"><div class="on-off">offline</div></div></div></li>`;
+                $(".chat-list").prepend(friend);
+            }
+        }
+    });
+}
+populate_friends();
+
+function populate_groups(){
+    $.ajax({
+        url: "/populate_groups",
+        type: "POST",
+        dataType: 'text',
+        data: {user:get_username()},
+        success: function (res){
+            // console.log(res);
+            res = JSON.parse(res);
+            for (var i = 0; i < res.length; i++){
+                var group = `<li class="lgrup">${res[i]}<div class="status"><div class="fas fa-envelope"></div></div></li>`;
+                $(".group-list").prepend(group);
+            }
+        }
+    });
+}
+populate_groups();
+
+function online_status(){
+    var obj = [];
+    var lnx = $('.chat-list .lom .name');
+    for (let i = 0; i < lnx.length; i++) {
+        obj.push({[lnx[i].textContent.slice(1)]:0});
+    } 
+    socket.emit("onoff", [get_username(), obj]);
+    setTimeout(online_status, 5000);
+}
+setTimeout(online_status, 500);
+
+function seen_status(){
+    var obj = [];
+    var lnx = $('.chat-list .lom .name');
+    for (let i = 0; i < lnx.length; i++) {
+        obj.push({[lnx[i].textContent.slice(1)]:0});
+    } 
+    socket.emit("update_seen", [get_username(), obj]);
+    setTimeout(seen_status, 5000);
+}
+
+setTimeout(seen_status, 500);
+
+function seen_status_group(){
+    var obj = []
+    var lnx = $('.group-list .lgrup');
+    for (let i = 0; i < lnx.length; i++) {
+        // console.log(lnx[i].textContent);
+        obj.push({[lnx[i].textContent]:0});
+    } 
+    // console.log(obj);
+    socket.emit("update_seen_group", [get_username(), obj]);
+    setTimeout(seen_status_group, 5000);
+}
+setTimeout(seen_status_group, 500);
+
+
+
+
+//conect to server socket
+var socket = io.connect("http://localhost:80");
+socket.emit("set_online", get_username());
+
+
+
+	
+
+
+    
 // functie care deschide window-ul create group la apasarea butonului
 $(document).ready(function() {     
     $('.create-group').click(function(){
         
-        if( $('.creategroup-window').is(':visible') ) {
-            // $(".creategroup-window").hide();
-            $('.creategroup-window').animate({opacity: "toggle"}, "slow");
-        }
-        else {
-            
-            // $(".creategroup-window").show();
-            $('.creategroup-window').animate({opacity: "toggle"}, "slow");
-        }
+        $('.creategroup-window').animate({opacity: "toggle"}, "slow");
             
     });
 });
@@ -69,39 +166,107 @@ $(document).ready(function() {
 });
 
 
-//add group to group-list when creating group
 
+function atentionare(care) {
+    $('.attention').text(`${care}`);
+    $('.attention').animate({height: "toggle", opacity: "toggle"}, "fast");
+    setTimeout('hide()',3000);
+  
+};
+function hide(){
+    $('.attention').animate({height: "toggle", opacity: "toggle"}, "fast");
+};
+
+
+
+//add group to group-list when creating group
 function add_group_to_list(){
     var regform3 = $(".creategroup-form");
     if(regform3[0].checkValidity()) {
         var gname = $('.creategroup-name').val();
         // console.log(gname);
         var users = $('.creategroup-users').val();
-        var gdiv = `<li class="lgrup">${gname}<div class="new"></div></li>`;
-        $(".group-list").prepend(gdiv);
+        var array = users.split(' ');
 
-        // $.ajax({
-        //     url: "/addgroup",
-        //     type: "GET",
-        //     dataType: 'text',
-        //     data: {group_name:gname, users_names:users},
-        //     success: function (res){
-        //         console.log(res);
-        //     }
-        // });
+        var friends = [];
+        var lnx = $('.chat-list .lom .name');
+        for (let i = 0; i < lnx.length; i++) {
+            friends.push(lnx[i].textContent.slice(1));
+        }
+        var include = 1;
+        for (var i in array){
+            if (array.includes(get_username())){
+                include = 2;
+            }
+            if (!friends.includes(array[i])){
+                include = 0;
+            }
+        }
+        group_users_ul = [];
+        group_users_ul.push(get_username());
+        for (var i in array){
+            group_users_ul.push(array[i]);
+        }
+
+        if(include == 0){
+            atentionare("You have to be friends with all added users");
+        }else if(include == 2){
+            atentionare("You already are in the group, don't add yourself");
+        }
+        else{
+
+            $.ajax({
+                url: "/create_group",
+                type: "POST",
+                dataType: 'text',
+                data: {group_n: gname, users: users, from: get_username()},
+                success: function (res){
+                    // console.log(res);
+                    if(res == "exists"){
+                        atentionare("Group name already exists");
+                    }else if(res == "created"){
+                        var gdiv = `<li class="lgrup">${gname}<div class="status"><div class="fas fa-envelope"></div></div></li>`;
+                        $(".group-list").prepend(gdiv);
+
+                        $(".attention").css("color", "green");
+                        atentionare("Group created");
+                        setTimeout(hide_create_group_winrow, 3000);
+
+                        
+
+                        
+                    }
+    
+    
+                    
+                }
+            });
+
+        }
+  
     };
 
 };
+
+function hide_create_group_winrow(){
+    $(".creategroup-window").hide();
+    $(".attention").css("color", "red");
+}
+
 $(document).ready(function() {
     add_group_to_list();
 });
 
 
+function scrolltobottom(){
+    $(".chat").scrollTop($(".chat")[0].scrollHeight);
+}
+
 //add name to chat when you click on li
 
 $(document).ready(function() {
-    $('.lom').click(function(){
-        var username = $(this).text();
+    $('.chat-list').on('click', '.lom', function() {
+        var username = $(this).find('.name').text();
         $('.om').remove();
         $('.grup').remove();
         var omdiv = `<div class="om">${username}</div>`;
@@ -110,34 +275,195 @@ $(document).ready(function() {
         $('.people').css('background','#5154638c');
         $('.people_menu').hide();
         $('.people').show();
+        if ($('.begin').is(':visible')){
+            $('.begin').animate({height: "toggle", opacity: "toggle"}, "slow");
+            $('.right').animate({height: "toggle", opacity: "toggle"}, "slow");
+        };
+
+
+        if($(this).find('.fa-envelope').css("color") == "rgb(1, 191, 191)"){
+            $(this).find('.fa-envelope').css("color","#01bfbf1a");
+
+            
+            socket.emit("remove_seen", {from: get_username(), to: username.slice(1)});
+        }
+        $('.chat').empty();
+        socket.emit("update_chat", {from: get_username(), to: username.slice(1)});
+        // setTimeout(scrolltobottom, 100);
+
     });
 });
 
 //add group to chat when you click on li
 
 $(document).ready(function() {
-    $('.lgrup').click(function(){
-        var username = $(this).text();
+    $(document).on('click', '.lgrup', function() {
+        var groupname = $(this).text();
         $('.om').remove();
         $('.grup').remove();
-        var grupdiv = `<div class="grup">${username}</div>`;
+        var grupdiv = `<div class="grup">${groupname}</div>`;
         $(".people").append(grupdiv);
         $('.people').css('padding-right','5%');
         $('.people').css('background','#5154638c');
         $('.people_menu').show();
         $('.people').show();
+        if ($('.begin').is(':visible')){
+            $('.begin').animate({height: "toggle", opacity: "toggle"}, "slow");
+            $('.right').animate({height: "toggle", opacity: "toggle"}, "slow");
+        };
+        $('.chat').empty();
+        $(".group_users").empty();
+
+
+        $.ajax({
+            url: "/group_users",
+            type: "POST",
+            dataType: 'text',
+            data: {group_n: groupname},
+            success: function (res){
+                res = JSON.parse(res);
+                // res = res.reverse()
+                for (i in res){
+                    // console.log(res[i]);
+                    var v = `<li class="group_usr">@${res[i]}</li>`
+                    $(".group_users").append(v);
+                }
+                    
+                 
+            }
+        });
+
+        if($(this).find('.fa-envelope').css("color") == "rgb(1, 191, 191)"){
+            $(this).find('.fa-envelope').css("color","#01bfbf1a");
+
+            
+            socket.emit("remove_seen_group", {from: get_username(), to: $(".grup").text()});
+
+        }
+
+        socket.emit("update_group", {group_n: groupname, from: get_username()});
+
+
+
+    });
+    
+});
+
+$(document).ready(function() {
+    $('.fa-smile-beam').click(function(){
+        // $(".smileys").css("display","grid");
+        // $(".fa-smile-beam").css("color", "#02e7e7");
+
+        $(".smileys").toggleClass("smiles-active");
+        $(".fa-smile-beam").toggleClass("smile_icon_active");
+    });
+
+    // $('').click(function(){
+    $('.chat-page').on('click', '.lom, .lgrup, .search, .background_pattern, .group-list, .fa-paper-plane', function() {
+        
+        if($('.smileys').is(':visible')){
+            $(".smileys").removeClass("smiles-active");
+            $(".fa-smile-beam").removeClass("smile_icon_active");
+        }
+        
+        if($('.smiles-active').is(':visible')){
+            $(".smileys").removeClass("smiles-active");
+            $(".fa-smile-beam").removeClass("smile_icon_active");
+        }
+    });
+
+
+
+    $('.smileys').on('click', '.emoji', function() {
+        // console.log($(this).text());
+        // $('.sendmsg_input').val('') += $(this).text();
+        $('.sendmsg_input').val($('.sendmsg_input').val() + $(this).text());
+
     });
 });
 
+const months = ["JAN", "FEB", "MAR","APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+function fulltime(d){
+    function pad(n){return n<10 ? '0'+n : n}
+    return d.getUTCFullYear()+'-'
+    + pad(months[d.getMonth()])+'-'
+    + pad(d.getUTCDate())+' '
+    + pad(d.getUTCHours()+3)+':'
+    + pad(d.getUTCMinutes())
+}
+function time(d){
+    function pad(n){return n<10 ? '0'+n : n}
+    return pad(d.getUTCHours()+3)+':'
+    + pad(d.getUTCMinutes())
+}
+
 //functie insert mesage
 function insert_message(){
-    if( $(".sendmsg_input").val().length > 0){
-        console.log($(".sendmsg_input").val().length);
+    if( $(".sendmsg_input").val().length > 0 && $(".sendmsg_input").val() != " " && $(".sendmsg_input").val() != "  "&& $(".sendmsg_input").val() != "   "&& $(".sendmsg_input").val() != "    "&& $(".sendmsg_input").val() != "     "){
+        
+        // console.log(to_person);
         var mesaj = $(".sendmsg_input").val();
-        $('.sendmsg_input').val(''); 
-        var limesaj = `<li class="left_msg"><div class="msg">${mesaj}</div></li>`;
-        $(".chat").append(limesaj);
-        document.querySelector(".chat-container").scrollTo(0,document.body.scrollHeight);
+        var fullt = fulltime(new Date());
+        var t = time(new Date());
+        $('.sendmsg_input').val('');
+        
+
+        
+        if ($('.om').is(':visible')){
+            var este = 0;
+            var to_person = $(".om").text().slice(1);
+            var limesaj = `<li class="left_msg"><div class="ul" style="left:2%;">${t}</div><div class="msg">${mesaj}</div></li>`;
+            
+            var lnx = $('.chat-list .lom .name');  //verifica daca userul este in lista de frecventi
+            for (let i = 0; i < lnx.length; i++) {
+                var txt = lnx[i].textContent;
+                if(txt == $(".om").text()){
+                    este = 1;
+                }
+            }
+
+
+            if(este == 0){    //il adauga in lista de frecventi daca nu este
+                var om = $(".om").text();
+                var a = `<li class="lom"><span class="name">${om}</span><div class="fas fa-envelope"></div><div class="status"><div class="fas fa-circle"><div class="on-off">offline</div></div></div></li>`
+                $(".chat-list").prepend(a);
+    
+                socket.emit("add_friends_list", [om.slice(1), get_username()]);
+                socket.emit("message_chat_first", {from: get_username(), to: to_person, user1_seen: 0, user2_seen: 0, mesg: {author: get_username(), date: fullt, m: mesaj}})
+                var first_limesaj = `<li class="left_msg"><div class="ul" style="left:2%;">${fullt}</div><div class="msg">${mesaj}</div></li>`;
+                $(".chat").append(first_limesaj);
+            }else if(este == 1){
+    
+                socket.emit("message_chat", {from: get_username(), to: to_person, user1_seen: 0, user2_seen: 0, mesg: {author: get_username(), date: fullt, m: mesaj}})
+                $(".chat").append(limesaj);
+            }
+        }
+        
+
+        if ($('.grup').is(':visible')){
+            group_users = [];
+            var lnx = $('.group_users .group_usr');  //ia lista cu group members
+            for (let i = 0; i < lnx.length; i++) {
+                var txt = lnx[i].textContent.slice(1);
+                group_users.push(txt);
+            }
+            // console.log(group_users);
+            var gr = $(".grup").text();
+            // console.log(gr);
+            var limesaj = `<li class="left_msg"><div class="ul" style="left:2%;">You ${t}</div><div class="msg">${mesaj}</div></li>`;
+            $(".chat").append(limesaj);
+            socket.emit("group_chat", {gr_name: gr, from: get_username(), group_memb: group_users, mesg: {author: get_username(), date: fullt, m: mesaj}});
+
+            //group chat
+        }
+        
+
+
+        scrolltobottom();
+        if($('.smileys').is(':visible')){
+            $(".smileys").removeClass("smiles-active");
+            $(".fa-smile-beam").removeClass("smile_icon_active");
+        }
     };
 }
 
@@ -169,11 +495,17 @@ $(document).ready(function() {
     });
 });
 
+// se ascund windowurile
 $(document).ready(function() {
-    $('.sendmsg_input, .lgrup, .lom, .search, .background_pattern, .group-list').click(function(){
+    
+    $('.chat-page').on('click', '.sendmsg_input, .lgrup, .lom, .search, .background_pattern, .group-list', function() {
+
         if ($('.group_users').is(':visible')){
-            $(".fa-chevron-down").toggleClass("toggle-arrow");
-            $('.group_users').animate({opacity: "toggle"}, "slow");
+            $(".fa-chevron-down").removeClass("toggle-arrow");
+            $('.group_users').hide();
+            
+            // $(".smileys").css("display","none");
+            // $(".fa-smile-beam").css("color", "white");
         }
         if( $('.creategroup-window').is(':visible') ) {
             // $(".creategroup-window").hide();
@@ -181,4 +513,340 @@ $(document).ready(function() {
         }
     });
 });
+
+
+
+//functie schimbare status online offline new msg
+function status_onoff(person, on){   // (%person, 1/0)
+    if(on==1){
+        for (var i=0;i<$(".lom").length;i++){
+            if($($(".lom")[i]).find(".name").text().slice(1) == person){
+                $($(".lom")[i]).find(".on-off").text('online');
+                $($(".lom")[i]).find(".fa-circle").css("color","#43A047");
+            }
+        } 
+    }
+    else{
+        for (var i=0;i<$(".lom").length;i++){
+            if($($(".lom")[i]).find(".name").text().slice(1) == person){
+                $($(".lom")[i]).find(".on-off").text('offline');
+                $($(".lom")[i]).find(".fa-circle").css("color","#8d8d8d");
+            }
+        }
+    }
+
+}
+function status_newmsg(person, newmsg){  // (%person, 1/0)
+
+    if(newmsg==1){
+        for (var i=0;i<$(".lom").length;i++){
+            if($($(".lom")[i]).find(".name").text().slice(1) == person){
+                $($(".lom")[i]).find(".fa-envelope").css("color","#01bfbf");
+                
+            }
+        } 
+    }
+    else{
+        for (var i=0;i<$(".lom").length;i++){
+            if($($(".lom")[i]).find(".name").text().slice(1) == person){
+                $($(".lom")[i]).find(".fa-envelope").css("color","#01bfbf1a");
+                
+            }
+        }
+    }
+};
+function status_newmsg_group(person, newmsg){  // (%person, 1/0)
+
+    if(newmsg==1){
+        for (var i=0;i<$(".lgrup").length;i++){
+            if($($(".lgrup")[i]).text() == person){
+                $($(".lgrup")[i]).find(".fa-envelope").css("color","#01bfbf");
+                
+            }
+        } 
+    }
+    else{
+        for (var i=0;i<$(".lgrup").length;i++){
+            if($($(".lgrup")[i]).text() == person){
+                $($(".lgrup")[i]).find(".fa-envelope").css("color","#01bfbf1a");
+                
+            }
+        }
+    }
+};
+//exemple de adaugare online si new message
+
+
+//logout
+
+$(document).ready(function() {
+    $('.logout').click(function(){
+        $.ajax({
+            url: "/logout",
+            type: "GET",
+            dataType: 'text'
+        });
+        
+        setTimeout(
+            function() {
+                location.reload();
+            }, 500);
+    });
+});
+
+
+//search input send ajax 1 second after stop typing 
+
+var typingTimer;
+var doneTypingInterval = 1000;
+$('.search').on('keyup', function() {
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(doneTyping, doneTypingInterval);
+});
+
+$('.search').on('keydown', function() {
+  clearTimeout(typingTimer);
+});
+
+function doneTyping() {
+    var src_usr = $('.search').val();
+
+    var obj = [];
+    var lnx = $('.chat-list .lom .name');
+    for (let i = 0; i < lnx.length; i++) {
+        obj.push(lnx[i].textContent.slice(1));
+    } 
+    if(obj.includes(src_usr)){
+        
+    var lnx = $('.chat-list .lom .name');
+    for (let i = 0; i < lnx.length; i++) {
+        if(lnx[i].textContent.slice(1) == src_usr){
+            lnx[i].click();
+        }
+    } 
+    }else{
+        $.ajax({
+            url: "/searchuser",
+            type: "POST",
+            dataType: 'text',
+            data: {src_usr:src_usr},
+            success: function (res){
+                if(res == "not_exists" || src_usr == get_username()){
+                    $(".fa-times").show().delay(1000).fadeOut();
+                } else{
+                    $(".fa-check").show().delay(1000).fadeOut();
+                    $(".search").val("");
+    
+                    $('.chat').empty();
+                    $('.om').remove();
+                    $('.grup').remove();
+                    var omdiv = `<div class="om">@${src_usr}</div>`;
+                    $(".people").append(omdiv);
+                    $('.people').css('padding-right','2%');
+                    $('.people').css('background','#5154638c');
+                    $('.people_menu').hide();
+                    $('.people').show();
+                    if ($('.begin').is(':visible')){
+                        $('.begin').animate({height: "toggle", opacity: "toggle"}, "slow");
+                        $('.right').animate({height: "toggle", opacity: "toggle"}, "slow");
+                    };
+                }
+            }
+        });
+    }
+
+}
+
+
+
+
+
+
+
+//listen for add to friends list
+
+socket.on('add_friend_to_list',(data)=>{
+    var new_friend = `<li class="lom"><span class="name">@${data}</span><div class="fas fa-envelope"></div><div class="status"><div class="fas fa-circle"><div class="on-off">offline</div></div></div></li>`;
+    $(".chat-list").prepend(new_friend);
+    status_newmsg(data,1);
+    status_onoff(data,1);
+});
+
+//listen for onoff
+
+socket.on('onoff_client',(data)=>{//status online offline users
+    for (i in data){
+        
+        for (var j in data[i]){
+            status_onoff(j,data[i][j]);
+            // console.log(j +" " +data[i][j]);
+        }
+    }
+});
+
+
+//populate chat messages when open a chat with a user
+socket.on('populate_msgs', (data)=>{
+    // console.log(data);
+    
+    for (var i in data){
+        if(typeof data[i-1] === 'undefined') {
+            if (data[i].author == get_username()){
+                var p = `<li class="left_msg"><div class="ul" style="left:2%;">${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                $('.chat').append(p);
+                
+            }else{
+                var p = `<li class="right_msg"><div class="ul" style="right:2%;">${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                $('.chat').append(p);
+                
+            }
+        }
+        else {
+            if (data[i-1].date.substr(0, data[i-1].date.indexOf(' ')) == data[i].date.substr(0, data[i-1].date.indexOf(' '))){
+                if (data[i].author == get_username()){
+                    var p = `<li class="left_msg"><div class="ul" style="left:2%;">${data[i].date.substr(data[i].date.indexOf(' ')+1)}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }else{
+                    var p = `<li class="right_msg"><div class="ul" style="right:2%;">${data[i].date.substr(data[i].date.indexOf(' ')+1)}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }
+            }else{
+                if (data[i].author == get_username()){
+                    var p = `<li class="left_msg"><div class="ul" style="left:2%;">${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }else{
+                    var p = `<li class="right_msg"><div class="ul" style="right:2%;">${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }
+            }
+
+        }
+
+    }
+    scrolltobottom();
+});
+
+//listen for message real time
+socket.on('message_client', (data)=>{
+    // console.log(data);
+    if ($('.people').is(':visible')){
+        if ($(".om").text().slice(1) == data.author){
+
+            var p = `<li class="right_msg"><div class="ul" style="right:2%;">${data.date.substr(data.date.indexOf(' ')+1)}</div><div class="msg">${data.m}</div></li>`
+            $('.chat').append(p);
+
+        }else{
+            status_newmsg(data.author, 1);
+        }
+    }else{
+        status_newmsg(data.author, 1);
+    }
+    scrolltobottom();
+});
+
+
+socket.on('seen_client',(data)=>{//seen status update
+    for (var i in data){
+        if ($('.people').is(':visible')){
+            if ($(".om").text().slice(1) == Object.keys(data)[0]){
+    
+                socket.emit("remove_seen", {from: get_username(), to: $(".om").text().slice(1)});
+    
+            }else{
+                status_newmsg(Object.keys(data)[0], data[i]);
+            }
+        }else{
+            status_newmsg(Object.keys(data)[0], data[i]);
+        }
+        
+    }
+    
+});
+
+
+
+socket.on('add_group',(data)=>{//status online offline users
+    var gdiv = `<li class="lgrup">${data}<div class="status"><div class="fas fa-envelope"></div></div></li>`;
+    $(".group-list").prepend(gdiv);
+});
+
+socket.on('populate_group',(data)=>{//populate group
+    for (var i in data){
+        if(typeof data[i-1] === 'undefined') {
+            if (data[i].author == get_username()){
+                var p = `<li class="left_msg"><div class="ul" style="left:2%;">You ${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                $('.chat').append(p);
+                
+            }else{
+                var p = `<li class="right_msg"><div class="ul" style="right:2%;">@${data[i].author} ${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                $('.chat').append(p);
+                
+            }
+        }
+        else {
+            if (data[i-1].date.substr(0, data[i-1].date.indexOf(' ')) == data[i].date.substr(0, data[i-1].date.indexOf(' '))){
+                if (data[i].author == get_username()){
+                    var p = `<li class="left_msg"><div class="ul" style="left:2%;">You ${data[i].date.substr(data[i].date.indexOf(' ')+1)}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }else{
+                    var p = `<li class="right_msg"><div class="ul" style="right:2%;">@${data[i].author} ${data[i].date.substr(data[i].date.indexOf(' ')+1)}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }
+            }else{
+                if (data[i].author == get_username()){
+                    var p = `<li class="left_msg"><div class="ul" style="left:2%;">You ${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }else{
+                    var p = `<li class="right_msg"><div class="ul" style="right:2%;">@${data[i].author} ${data[i].date}</div><div class="msg">${data[i].m}</div></li>`
+                    $('.chat').append(p);
+                }
+            }
+
+        }
+
+    }
+    scrolltobottom();
+    
+});
+
+
+socket.on('seen_client_group',(data)=>{//seen status update
+    // console.log(data);
+    for (var i in data){
+        if ($('.people').is(':visible')){
+            if ($(".grup").text() == Object.keys(data)[0]){
+    
+                socket.emit("remove_seen_group", {from: get_username(), to: $(".grup").text()});
+    
+            }else{
+                status_newmsg_group(Object.keys(data)[0], data[i]);
+            }
+        }else{
+            status_newmsg_group(Object.keys(data)[0], data[i]);
+        }
+        
+    }
+    
+});
+
+
+//listen for group message real time
+socket.on('group_message_client', (data)=>{
+    // console.log(data);
+    if ($('.people').is(':visible')){
+        if ($(".grup").text() == data[0]){
+
+            var p = `<li class="right_msg"><div class="ul" style="right:2%;">${data[1].author} ${data[1].date.substr(data[1].date.indexOf(' ')+1)}</div><div class="msg">${data[1].m}</div></li>`
+            $('.chat').append(p);
+
+        }else{
+            status_newmsg_group(data[0], 1);
+        }
+    }else{
+        status_newmsg_group(data[0], 1);
+    }
+    scrolltobottom();
+});
+
+
 
